@@ -1,0 +1,141 @@
+<html lang="en"> 
+<head>
+<title>Environment-Mapping</title>
+<meta charset="utf-8"> 
+</head>
+
+<script id="shader-vs" type="x-shader/x-vertex">
+    attribute vec3 aVertexNormal;
+    attribute vec3 aVertexPosition;
+   
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+    uniform mat3 uNMatrix;
+    
+    uniform vec3 uLightPosition;
+    uniform vec3 uAmbientLightColor;
+    uniform vec3 uDiffuseLightColor;
+    uniform vec3 uSpecularLightColor;
+    
+    uniform vec3 uKAmbient;
+    uniform vec3 uKDiffuse;
+    uniform vec3 uKSpecular;
+    uniform float uShininess;
+// NEW CODE FOR REFLECTION
+    varying vec4 vColor;
+    varying vec3 R;
+    uniform mat4 newNormals;
+// NEW CODE FOR REFRACTION
+    varying vec3 T;
+    void main(void) {
+    // Get the vertex position in eye coordinates
+    vec4 vertexPositionEye4 = uMVMatrix * vec4(aVertexPosition, 1.0);
+    vec3 vertexPositionEye3 = vertexPositionEye4.xyz / vertexPositionEye4.w;
+  
+    // Calculate the vector (l) to the light source
+    vec3 lightEye=(vec4(uLightPosition,1)).xyz;
+    vec3 vectorToLightSource = normalize(lightEye - vertexPositionEye3);
+    
+    // Transform the normal (n) to eye coordinates
+    vec3 normalEye = normalize(uNMatrix * aVertexNormal);
+    
+    // Calculate n dot l for diffuse lighting
+    float diffuseLightWeightning = max(dot(normalEye, vectorToLightSource), 0.0);
+                                       
+    // Calculate the reflection vector (r) that is needed for specular light
+    vec3 reflectionVector = normalize(reflect(-vectorToLightSource, normalEye));
+    
+    // The camera in eye coordinates is located in the origin and is pointing
+    // along the negative z-axis. Calculate viewVector (v) 
+    // in eye coordinates as:
+    // (0.0, 0.0, 0.0) - vertexPositionEye3
+    vec3 viewVectorEye = -normalize(vertexPositionEye3);
+    
+    float rdotv = max(dot(reflectionVector, viewVectorEye), 0.0);
+    
+    float specularLightWeightning = pow(rdotv, uShininess);
+
+    // Sum up all three reflection components and send to the fragment shader
+    vColor = vec4(((uAmbientLightColor*uKAmbient)
+                + (uDiffuseLightColor*uKDiffuse) * diffuseLightWeightning
+                + ((uSpecularLightColor*uKSpecular) * specularLightWeightning)),1.0);
+                
+    gl_Position = uPMatrix*uMVMatrix*vec4(aVertexPosition, 1.0);
+
+    // NEW CODE FOR REFLECTION
+    vec4 Surface = newNormals * vec4(normalEye,1.0);
+    vec4 N = uMVMatrix * vec4(aVertexNormal,1.0);
+    R = reflect(Surface.xyz, N.xyz);
+    // NEW  CODE FOR REFRACTION
+    T = refract(vertexPositionEye3.xyz,aVertexNormal.xyz,1.0/1.52);
+    }
+</script>
+
+<script id="shader-fs" type="x-shader/x-fragment">
+precision mediump float;
+varying vec4 vColor;
+// NEW CODE FOR REFLECTION
+varying vec3 R;
+uniform samplerCube texMap;
+uniform float Toggle;
+// NEW CODE FOR REFRACTION
+varying vec3 T;
+uniform samplerCube RefMap;
+void main(void) {
+    if(Toggle==0.5){
+        gl_FragColor = vColor;}
+        // NEW CODE FOR REFLECTION
+        else if(Toggle ==1.0){
+        vec4 texColor = textureCube(texMap,R);
+        gl_FragColor = texColor;}
+        else if (Toggle== 0.0){
+            vec4 refractColor =textureCube(RefMap, T);
+            refractColor = mix(refractColor, vec4(1.0, 1.0, 1.0, 1.0),0.3);
+            gl_FragColor = refractColor;
+        }
+ }
+</script>
+<!-- CUBE SHADER -->
+<script id="cubeShader-vs" type="x-shader/x-vertex">
+    attribute vec3 vertPosition;
+    varying vec4 varyingPosition;
+    uniform mat4 uProjectionM;
+    uniform mat4 uMVM;
+
+    void main(){
+        varyingPosition = vec4(vertPosition,1.0);
+        gl_Position = uProjectionM *uMVM *vec4(vertPosition,1);
+    }</script>
+<script id = "cubeShader-fs" type = "x-shader/x-fragment">
+    precision mediump float;
+    uniform samplerCube skybox;
+    varying vec4 varyingPosition;
+    void main(){
+        gl_FragColor = textureCube(skybox, normalize(varyingPosition.xyz/varyingPosition.w));
+    }</script>
+
+<script src="gl-matrix-min.js"></script> 
+<script src="webgl-utils.js"></script> 
+<script src="TriMesh.js"></script>  
+<script src="main.js"></script>   
+<body onload="startup();">
+ <canvas id="myGLCanvas" width="1600" height="800"></canvas>
+    <form id="input_form">
+        <fieldset>
+            <legend>Rendering Parameters</legend>
+         <input type="radio" name="primitive" id="wireframe" value="wireframe"> Wireframe
+         <input type="radio" name="primitive" id="polygon" id="polygon" value="polygon" checked> Polygon
+         <input type="radio" name="primitive" id="wirepoly" value="wirepoly" > Polygon with Edges
+         <input type="radio" name = "Shading" id = Normal> Normal
+         <input type="radio" name = "Shading" id = reflect checked> Reflection
+         <input type="radio" name = "Shading" id = refraction> Refraction
+        </fieldset>
+        <fieldset>
+            <legend>Mesh Pose and Camera Position</legend>
+         <emph>Cube     Euler Y:</emph> <input type="number" id="eY" value="0"> Keys A and D (Orbit) <br><br>
+         <emph>TeaPot   Euler Y:</emph> <input type="number" id="TeaeY" value="0" > Keys ArrowLeft and ArrowRight   
+        </fieldset>
+        </form>
+</body>
+
+</html>
